@@ -1,5 +1,5 @@
-function Banner {
-Write-Output "
+Function Banner {
+    Write-Output "
        _ _             _         
      _| |_|___ ___ ___|_|___ ___ 
     | . | |  _|_ -|   | | . | -_|
@@ -7,16 +7,9 @@ Write-Output "
                         |_|      
     Author: Gr1mmie
     "
-    
 }
 
-Banner 
-# var initialization
-[string]$site = Read-Host -Prompt " Enter site: "
-[string]$schema = "http://"
-[string]$full_addr = "$schema$site"
-
-function Write-Good { 
+Function Write-Good { 
     param( 
         [Parameter(Mandatory = $true, Position = 0)]
         [string]$strinput 
@@ -25,19 +18,32 @@ function Write-Good {
     Write-Host $strinput -ForegroundColor 'Green'
 }
 
-function Write-Bad  { 
+Function Write-Bad  { 
     param( 
         [Parameter(Mandatory = $true, Position = 0)]
         [string]$strinput
     ) 
 
-    Write-Host $Global:ErrorLine $input -ForegroundColor 'red' 
+    Write-Host $Global:ErrorLine $strinput -ForegroundColor 'red' 
  }
 
-# function to return page contents
-Function Fetch {
+Function Write-Info {
+    param( 
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$strinput
+    ) 
 
-    param ( [OutputType([String])]$PageContent )
+    Write-Host  $strinput -ForegroundColor 'yellow' 
+}
+
+Function RobotsFetch {
+
+    param ( 
+        [Parameter(Mandatory=$true)]
+        [string]$Url,
+
+        [OutputType([String])]$PageContent
+    )
 
     try{
         $req = Invoke-WebRequest "$full_addr/robots.txt"
@@ -48,8 +54,40 @@ Function Fetch {
     }
 }
 
+# fetch all xml files and put into new array
+Function SitemapCrawl {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$Sitemap,
+
+        [Parameter(Mandatory=$true)]
+        [string[]]$Disallow,
+
+        [OutputType([string[]])]$SitemapDirs,
+
+        [OutputType([string[]])]$SitemapArr
+    )
+
+    [string[]]$SitemapArr = $Sitemap
+    [string[]]$SitemapDirs = @()
+
+    foreach($sm in $Sitemap){
+        ([xml](Invoke-WebRequest $sm).Content) | Select-Object -ExpandProperty sitemapindex | Select-Object -expand sitemap | Select-Object -Expand loc | 
+            ForEach-Object { 
+                $SitemapArr += $_
+                if($_ -like "*.xml"){
+                   $SitemapDirs += (([xml](Invoke-WebRequest $_).Content) | Select-Object -ExpandProperty urlset | Select-Object -ExpandProperty url | Select-Object -expand loc)
+                } else {    
+                             
+                }
+            }
+    }
+
+    return $SitemapDirs, $SitemapArr
+}
+
 # add contents of robots to arrays
-Function Parse {
+Function RobotsParse {
     param (
         [Parameter(Mandatory=$true)]
         [string]$PageContent,
@@ -74,24 +112,76 @@ Function Parse {
 }
 
 # print out tags
-Function Print {
+Function RobotsPrint {
     param(
-        [Parameter(Mandatory=$true)]
-        [string[]]$disallow,
+        [Parameter(Mandatory=$false)]
+        [string[]]$Directories,
         
-        [Parameter(Mandatory=$true)]
-        [string[]]$sitemap 
+        [Parameter(Mandatory=$false)]
+        [string[]]$Sitemaps
     )
 
-    Write-Output "`n[+] Sitemap(s): `n"
-    foreach($entry in $sitemap) { Write-Good "$entry" }
-    Write-Output "`n[+] Dirs Found: `n"
-    foreach($entry in $disallow) { Write-Good "$schema$site$entry" }
+    Write-Output "`n[+] Sitemap(s):"
+    foreach($entry in $Sitemaps) { Write-Good "$entry" }
+    Write-Output "`n[+] Dirs Found:"
+    foreach($entry in $Directories) { Write-Good "$schema$site$entry" }
     
 }
 
-$out = Fetch
+Function SitemapCrawlPrint {
+    param(
+        [Parameter(Mandatory=$false)]
+        [string[]]$Directories,
+        
+        [Parameter(Mandatory=$false)]
+        [string[]]$Sitemaps
+    )
 
-$disallow,$sitemap = Parse -PageContent $out -Disallow $disallow -Sitemap $sitemap
+    Write-Output "`n[+] Sitemap(s):"
+    foreach($entry in $Sitemaps) { Write-Good "$entry" }
+    Write-Output "`n[+] Dirs Found:"
+    foreach($entry in $Directories) { Write-Good "$entry" }
+    
+}
 
-Print -Disallow $disallow -Sitemap $sitemap
+Function Invoke-Scrape {
+
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Site,
+
+        [Parameter(Mandatory=$false)]
+        [bool]$Secure = $false,
+
+        [Parameter(Mandatory=$false)]
+        [bool]$SitemapCrawl = $false
+    )
+
+    if(-not $Secure){ 
+        $schema = "http://" 
+    } else { $schema = "https://" }
+
+    $full_addr = "$schema$site"
+
+    $out = RobotsFetch -Url $full_addr
+    
+    if(-not $SitemapCrawl) { 
+        Write-Info "[*] Sitemap crawl: off"
+        $directories,$sitemap = RobotsParse -PageContent $out -Disallow $disallow -Sitemap $sitemap 
+        RobotsPrint -Directories $directories -Sitemaps $sitemap
+    } else { 
+        Write-Info "[*] Sitemap crawl: on"
+        $disallow,$sitemap = RobotsParse -PageContent $out -Disallow $disallow -Sitemap $sitemap
+        $SitemapDirs,$SitemapArray = SitemapCrawl -Disallow $disallow -Sitemap $sitemap
+
+        SitemapCrawlPrint -Directories $SitemapDirs -Sitemaps $SitemapArray
+    }
+    
+
+}
+
+Banner
+
+[string]$site = Read-Host -Prompt " Enter site: "
+
+Invoke-Scrape -Site $site -Secure $true -SitemapCrawl $true
