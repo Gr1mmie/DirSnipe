@@ -1,7 +1,5 @@
 # DirSnipe
 
-robots.txt go brrr.
-
 Reaches out to robots.txt of a website and returns a wordlist based on the disallow entries, nothing crazy. Might be useful for CTFs...or something idk. Wrote it in python and then decided to port it over to PowerShell. Behold, the might of boredom!
 
 Companion blog post: https://grimmie.net/dirhunting-with-sitemap/ 
